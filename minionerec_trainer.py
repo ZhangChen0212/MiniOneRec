@@ -687,7 +687,8 @@ class ReReTrainer(Trainer):
                 # cf_dict=sasrec_dict,
                 # unconditional_ids=None,
                 num_beams=self.num_generations if self.beam_search else 1,
-                base_model=self.base_model
+                base_model=self.base_model,
+                eos_token_id=self.processing_class.eos_token_id
             )
         self.logits_processor = LogitsProcessorList([TemperatureLogitsWarper(temperature=self.temperature), ccc])
         self.test_lp_list = LogitsProcessorList([ccc])

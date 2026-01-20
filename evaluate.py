@@ -181,7 +181,8 @@ def main(
             clp = ConstrainedLogitsProcessor(
                 prefix_allowed_tokens_fn=prefix_allowed_tokens_fn,
                 num_beams=num_beams,
-                base_model=base_model
+                base_model=base_model,
+                eos_token_id=model.config.eos_token_id
             )
             logits_processor = LogitsProcessorList([clp])
 

@@ -4,6 +4,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 import math
 import numpy as np
 import torch
+import warnings
 
 from transformers.utils import add_start_docstrings
 
@@ -26,12 +27,14 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
         self,
         prefix_allowed_tokens_fn: Callable[[int, torch.Tensor], List[int]],
         num_beams: int,
-        base_model: str = None
+        base_model: str = None,
+        eos_token_id: int = None
     ):
         self._prefix_allowed_tokens_fn = prefix_allowed_tokens_fn
         self._num_beams = num_beams
         self.count=0
         self.base_model = base_model
+        self.eos_token_id = eos_token_id
         if self.base_model.lower().find("gpt2") > -1:
             self.prefix_index = 4
         else:
@@ -41,7 +44,7 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
     @add_start_docstrings(LOGITS_PROCESSOR_INPUTS_DOCSTRING)
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
         scores = torch.nn.functional.log_softmax(scores, dim=-1)
-        mask = torch.full_like(scores, -1000000)
+        mask = torch.full_like(scores, float('-inf'))
             
         for batch_id, beam_sent in enumerate(input_ids.view(-1, self._num_beams, input_ids.shape[-1])):
             for beam_id, sent in enumerate(beam_sent):
@@ -53,6 +56,13 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
                 prefix_allowed_tokens = self._prefix_allowed_tokens_fn(batch_id, hash_key)
 
                 if len(prefix_allowed_tokens) == 0:
+                    warnings.warn(
+                        f"No valid tokens found for hash_key {hash_key} at step {self.count}. "
+                        f"This indicates the model generated an unexpected token. "
+                    )
+                    # Force EOS token to end invalid sequence
+                    if self.eos_token_id is not None:
+                        mask[batch_id * self._num_beams + beam_id, self.eos_token_id] = 0
                     continue 
                 
                 mask[batch_id * self._num_beams + beam_id, prefix_allowed_tokens] = 0
