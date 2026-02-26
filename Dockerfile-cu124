@@ -1,0 +1,13 @@
+FROM pytorch/pytorch:2.6.0-cuda11.8-cudnn9-devel
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    	build-essential gcc g++ make \
+    	git curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN pip install -U pip && pip install --no-cache-dir -r requirements-cu124.txt
+RUN pip uninstall -y torchvision && \
+    	pip install --no-cache-dir torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+
+CMD ["bash"]

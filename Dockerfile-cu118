@@ -1,0 +1,12 @@
+FROM pytorch/pytorch:2.6.0-cuda11.8-cudnn9-devel
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    	build-essential gcc g++ make \
+    	git curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install -U pip && pip install --no-cache-dir -r requirements-cu118.txt
+
+CMD ["bash"]
