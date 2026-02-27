@@ -1,7 +1,7 @@
 import os
 import sys
 from typing import List
-import numpy as np 
+import numpy as np
 import fire
 import torch
 import transformers
@@ -13,7 +13,7 @@ import torch.nn as nn
 import math
 import warnings
 from functools import partial
-import numpy as np 
+import numpy as np
 import fire
 import transformers
 from torch.optim.lr_scheduler import LambdaLR
@@ -21,7 +21,8 @@ import json
 import torch.nn as nn
 import bitsandbytes as bnb
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from data import D3Dataset, SFTData, SidSFTDataset, SidItemFeatDataset, FusionSeqRecDataset, PreferenceSFTDataset, UserPreference2sidSFTDataset, TitleHistory2SidSFTDataset
+from data import D3Dataset, SFTData, SidSFTDataset, SidItemFeatDataset, FusionSeqRecDataset, PreferenceSFTDataset, \
+    UserPreference2sidSFTDataset, TitleHistory2SidSFTDataset
 import random
 from datasets import Dataset as HFDataset
 from torch.utils.data import ConcatDataset
@@ -34,24 +35,24 @@ class TokenExtender:
         self.index_file = index_file
         self.indices = None
         self.new_tokens = None
-        
+
     def _load_data(self):
         with open(os.path.join(self.data_path, self.dataset + self.index_file), 'r') as f:
-            self.indices = json.load(f)
-    
+            self.indices = json.load(f)  # Note(zc): self.indices = {"0": ["<a_60>", "<b_159>", "<c_203>"], "1": [...], ... }
+
     def get_new_tokens(self):
         if self.new_tokens is not None:
             return self.new_tokens
-            
+
         if self.indices is None:
             self._load_data()
-        
+
         self.new_tokens = set()
-        for index in self.indices.values():
-            for token in index:
+        for index in self.indices.values():  # Note(zc): index = ["<a_60>", "<b_159>", "<c_203>"]
+            for token in index:  # Note(zc): token = "<a_60>"
                 self.new_tokens.add(token)
-        self.new_tokens = sorted(list(self.new_tokens))
-        
+        self.new_tokens = sorted(list(self.new_tokens))  # Note(zc): to ensure determinism
+
         return self.new_tokens
 
 
@@ -65,18 +66,21 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+
+# Note(zc): Unused in current script (Trainer was using default lr_scheduler_type; optimizers=(...) was commented out).
 def _get_cosine_schedule_with_warmup_lr_lambda(
-    current_step, *, num_warmup_steps, num_training_steps, num_cycles
+        current_step, *, num_warmup_steps, num_training_steps, num_cycles
 ):
     if current_step < num_warmup_steps:
         return max(0.1, float(current_step) / float(max(1, num_warmup_steps)))
     progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
     return max(0.1, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
 
-def get_cosine_schedule_with_warmup(
-    optimizer, num_warmup_steps, num_training_steps, num_cycles: float = 0.5, last_epoch: int = -1
-):
 
+# Note(zc): See above.
+def get_cosine_schedule_with_warmup(
+        optimizer, num_warmup_steps, num_training_steps, num_cycles: float = 0.5, last_epoch: int = -1
+):
     lr_lambda = partial(
         _get_cosine_schedule_with_warmup_lr_lambda,
         num_warmup_steps=num_warmup_steps,
@@ -86,49 +90,53 @@ def get_cosine_schedule_with_warmup(
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
-
 def train(
-    # model/data params
-    base_model: str = "",  # the only required argument
-    train_file: str="",
-    eval_file: str="",
-    output_dir: str = "",
-    sample: int = -1,
-    seed: int = 42,
-    
-    # training hyperparams
-    batch_size: int = 128,
-    micro_batch_size: int = 4,
-    num_epochs: int = 10,
-    learning_rate: float = 3e-4,
-    cutoff_len: int = 512,
-    # llm hyperparams
-    group_by_length: bool = False,  # faster, but produces an odd training loss curve
-    freeze_LLM: bool = False,  # freeze LLM parameters, only train new token embeddings
-    # wandb params
-    wandb_project: str = "",
-    wandb_run_name: str = "",
-    resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
-    category: str="",
-    train_from_scratch: bool = False,
-    sid_index_path: str = "",
-    item_meta_path: str = "",
+        # model/data params
+        base_model: str = "",  # the only required argument
+        train_file: str = "",
+        eval_file: str = "",    # Note(zc): validation set
+        output_dir: str = "",
+        sample: int = -1,
+        seed: int = 42,
+
+        # training hyperparams
+        batch_size: int = 128,  # Note(zc): micro_batch_size * world_size * gradient_accumulation_steps
+        micro_batch_size: int = 4,  # Note(zc): samples each forward / backward per GPU
+        num_epochs: int = 10,
+        learning_rate: float = 3e-4,
+        cutoff_len: int = 512,
+
+        # llm hyperparams
+        group_by_length: bool = False,  # faster, but produces an odd training loss curve
+        freeze_LLM: bool = False,  # freeze LLM parameters, only train new token embeddings
+
+        # wandb params
+        wandb_project: str = "",
+        wandb_run_name: str = "",
+        resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
+        category: str = "",
+        train_from_scratch: bool = False,
+        sid_index_path: str = "",
+        item_meta_path: str = "",
 ):
     set_seed(seed)
     os.environ['WANDB_PROJECT'] = wandb_project
-    category_dict = {"Industrial_and_Scientific": "industrial and scientific items", "Office_Products": "office products", "Toys_and_Games": "toys and games", "Sports": "sports and outdoors", "Books": "books"}
+    category_dict = {"Industrial_and_Scientific": "industrial and scientific items",
+                     "Office_Products": "office products", "Toys_and_Games": "toys and games",
+                     "Sports": "sports and outdoors", "Books": "books"}
     print(category)
     category = category_dict[category]
     assert (
         base_model
     ), "Please specify a --base_model, e.g. --base_model='decapoda-research/llama-7b-hf'"
     gradient_accumulation_steps = batch_size // micro_batch_size
-    
+
     device_map = "auto"
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     ddp = world_size != 1
     if ddp:
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
+        # Note(zc): gradient_accumulation_steps: num of accumulated forward / backward per GPU; world_size = num_GPUs #
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
 
     if not train_from_scratch:
@@ -140,12 +148,13 @@ def train(
         config = AutoConfig.from_pretrained(base_model)
         model = AutoModelForCausalLM.from_config(config)
         print("Training from scratch!")
-        
+
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+    original_vocab_size = len(tokenizer)    # Debug(zc): original_vocab_size was not defined.
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
-    
+
     if sid_index_path and os.path.exists(sid_index_path):
         print(f"Loading index from {sid_index_path}")
         token_extender = TokenExtender(
@@ -155,8 +164,8 @@ def train(
         new_tokens = token_extender.get_new_tokens()
         if new_tokens:
             print(f"Adding {len(new_tokens)} new tokens to tokenizer")
-            tokenizer.add_tokens(new_tokens)
-            model.resize_token_embeddings(len(tokenizer))
+            tokenizer.add_tokens(new_tokens)  # Note(zc): ensure tokens like "<a_60>" are atomic
+            model.resize_token_embeddings(len(tokenizer))  # Note(zc): initialize embeddings for new tokens
 
     # Freeze LLM parameters if required
     if freeze_LLM:
@@ -165,7 +174,7 @@ def train(
             param.requires_grad = False
 
         if sid_index_path and os.path.exists(sid_index_path) and new_tokens:
-            embedding_layer = model.get_input_embeddings()
+            embedding_layer = model.get_input_embeddings()  # Note(zc): embedding_layer shape: [vocab_size, hidden_dim]
             if embedding_layer.weight.shape[0] > original_vocab_size:
                 embedding_layer.weight.requires_grad = True
 
@@ -173,56 +182,56 @@ def train(
                     # grad shape: [vocab_size, hidden_dim]
                     grad[:original_vocab_size].zero_()
                     return grad
-                
+
                 embedding_layer.weight.register_hook(mask_grad)
 
                 print(f"Unfrozen {len(new_tokens)} new token embeddings "
-                    f"(indices {original_vocab_size} to {len(tokenizer)-1})")
+                      f"(indices {original_vocab_size} to {len(tokenizer) - 1})")
 
         else:
             print("Warning: freeze_LLM=True but no new tokens added. All parameters are frozen!")
 
         # Print the number of trainable parameters (it will still report the size of the entire embedding matrix, but only the newly added rows will have non-zero gradients).
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        total_params     = sum(p.numel() for p in model.parameters())
+        total_params = sum(p.numel() for p in model.parameters())
         print(f"Trainable parameters (with grad-mask): {trainable_params:,} / "
-            f"{total_params:,} ({100*trainable_params/total_params:.2f}%)")
-        
+              f"{total_params:,} ({100 * trainable_params / total_params:.2f}%)")
+
     train_datasets = []
     # train_data1 = SFTData(train_file=train_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
-    train_data1 = SidSFTDataset(train_file=train_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
+    train_data1 = SidSFTDataset(train_file=train_file, tokenizer=tokenizer, max_len=cutoff_len, sample=sample,
+                                seed=seed, category=category)
     train_datasets.append(train_data1)
-    train_data2 = SidItemFeatDataset(item_file=item_meta_path, index_file=sid_index_path, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
+    train_data2 = SidItemFeatDataset(item_file=item_meta_path, index_file=sid_index_path, tokenizer=tokenizer,
+                                     max_len=cutoff_len, sample=sample, seed=seed, category=category)
     train_datasets.append(train_data2)
-    train_data3 = FusionSeqRecDataset(train_file=train_file, item_file=item_meta_path, index_file=sid_index_path, tokenizer=tokenizer, max_len=cutoff_len, sample=sample, seed=seed, category=category)
+    train_data3 = FusionSeqRecDataset(train_file=train_file, item_file=item_meta_path, index_file=sid_index_path,
+                                      tokenizer=tokenizer, max_len=cutoff_len, sample=sample, seed=seed,
+                                      category=category)
     train_datasets.append(train_data3)
     # train_data4 = SFTData(train_file=train_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
     # train_datasets.append(train_data4)
     # train_data5 = TitleHistory2SidSFTDataset(train_file=train_file, item_file=item_meta_path, index_file=sid_index_path, tokenizer=tokenizer, max_len=cutoff_len, sample=sample, seed=seed, category=category)
     # train_datasets.append(train_data5)
     train_data = ConcatDataset(train_datasets)
-    val_data = SidSFTDataset(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
+    val_data = SidSFTDataset(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len, sample=sample, seed=seed,
+                             category=category)
     # val_data = SFTData(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=20000, seed=seed, category=category)
-    print("LOAD DATA FINISHED")    
-    
-    if resume_from_checkpoint:
-        checkpoint_name = os.path.join(
-            resume_from_checkpoint, "pytorch_model.bin"
-        )  # Full checkpoint
+    print("LOAD DATA FINISHED")
 
     if not ddp and torch.cuda.device_count() > 1:
         model.is_parallelizable = True
         model.model_parallel = True
-    
-    sample_frac = 1
-    hf_train_dataset = HFDataset.from_dict({k: [v[k] for v in train_data] for k in train_data[0].keys()})
-    hf_train_dataset = hf_train_dataset.shuffle(seed=42).select(range(int(sample_frac * len(hf_train_dataset))))
-    hf_val_dataset = HFDataset.from_dict({k: [v[k] for v in val_data] for k in val_data[0].keys()}).shuffle(seed=seed)
-    hf_val_dataset = hf_val_dataset.shuffle(seed=42)
 
+    sample_frac = 1     # Note(zc): subsample training data for quick runs (if possible)
+    hf_train_dataset = HFDataset.from_dict({k: [v[k] for v in train_data] for k in train_data[0].keys()})   # Note(zc): list of dict -> dict of list
+    hf_train_dataset = hf_train_dataset.shuffle(seed=42).select(range(int(sample_frac * len(hf_train_dataset))))
+    hf_val_dataset = HFDataset.from_dict({k: [v[k] for v in val_data] for k in val_data[0].keys()})
+    hf_val_dataset = hf_val_dataset.shuffle(seed=42)
+    # Note(zc): check train/val dataset sizes and schema
     print(hf_train_dataset)
     print(hf_val_dataset)
-    eval_step = 0.05
+
     trainer = transformers.Trainer(
         # deepspeed=deepspeed,
         model=model,
@@ -240,10 +249,11 @@ def train(
             bf16=True,
             logging_steps=1,
             optim="adamw_torch",
-            eval_strategy="steps",
-            eval_steps=eval_step, 
-            save_strategy="steps",
-            save_steps=eval_step,
+            lr_scheduler_type="cosine",  # Debug(zc): align with paper.
+            eval_strategy="epoch",  # Debug(zc): originally was "steps".
+            # eval_steps=eval_step,  # Debug(zc): early-stopping patience in epochs according to paper
+            save_strategy="epoch",  # Debug(zc): originally was "steps".
+            # save_steps=eval_step,
             output_dir=output_dir,
             save_total_limit=1,
             load_best_model_at_end=True,
@@ -254,18 +264,17 @@ def train(
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         ),
-        callbacks = [EarlyStoppingCallback(early_stopping_patience=3)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
         # optimizers=(optimizer, lr_scheduler) 
     )
-    model.config.use_cache = False
-    
+    model.config.use_cache = False  # Note(zc): disable KV cache for training
+
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     trainer.save_model(output_dir)
-    
+
     output_dir = os.path.join(output_dir, "final_checkpoint")
     trainer.model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
-
 
 
 if __name__ == "__main__":
