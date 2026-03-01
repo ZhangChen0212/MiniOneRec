@@ -5,7 +5,7 @@
 
 # Default parameters
 DATASET="Industrial_and_Scientific"
-ROOT="../data/Amazon18/$DATASET"
+ROOT="../data/Amazon/index"
 K=256
 L=3
 MAX_ITER=100
