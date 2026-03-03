@@ -19,8 +19,6 @@ try:
     HAS_CONSTRAINED = True
 except ImportError:
     HAS_CONSTRAINED = False
-    print("Warning: k-means-constrained not available")
-    print("Install with: pip install k-means-constrained")
 
 
 def balanced_kmeans_level_constrained(X, K, max_iter=100, tol=1e-7, random_state=None, verbose=False):
@@ -45,7 +43,7 @@ def balanced_kmeans_level_constrained(X, K, max_iter=100, tol=1e-7, random_state
         max_iter=max_iter,
         tol=tol,
         random_state=random_state,
-        n_init=3,
+        n_init=3,   # Note(zc): initialize 3 times and keep the best result
         verbose=verbose,
         n_jobs=16
     )
@@ -83,8 +81,8 @@ def residual_kmeans_constrained(X, K, L, max_iter=300, tol=1e-4, random_state=No
         recon: Reconstructed data (N, d)
     """
     total_start = time.time()
-    n, d = X.shape
-    Ks = ([K] * L) if isinstance(K, int) else list(K)
+    n, d = X.shape  # Note(zc): n = num_items, d = embedding_dim
+    Ks = ([K] * L) if isinstance(K, int) else list(K)   # Note(zc): Ks = [256, 256, 256]
     assert len(Ks) == L
 
     X = X.astype(np.float32, copy=False)
@@ -111,7 +109,7 @@ def residual_kmeans_constrained(X, K, L, max_iter=300, tol=1e-4, random_state=No
         codebooks.append(C_l)
 
         # Subtract reconstructed part from residual
-        R -= C_l[codes_l]
+        R -= C_l[codes_l]   # Note(zc): shape of cluster centers: (k_l=256, d)
 
         print(f"[Time] Level {l+1}: {time.time() - level_start:.2f}s")
         if verbose:
@@ -130,13 +128,13 @@ def residual_kmeans_constrained(X, K, L, max_iter=300, tol=1e-4, random_state=No
 
 def deal_with_deduplicate(df):
     """Handle duplicates by appending row index"""
-    df_with_index = df.with_row_index()
+    df_with_index = df.with_row_index()  # Note(zc): add a row index column
 
     result_df = df_with_index.with_columns(
         pl.when(pl.len().over("codes") > 1)
         .then(
             pl.col("codes").list.concat(
-                pl.col("index").rank(method="ordinal").over("codes").cast(pl.Int64)
+                pl.col("index").rank(method="ordinal").over("codes").cast(pl.Int64)    # Note(zc): append ordinal suffix
             )
         )
         .otherwise(pl.col("codes"))
@@ -219,18 +217,23 @@ if __name__ == "__main__":
     analyze_codes(codes_all.T, title="Code Statistics:", verbose=True)
 
     # Save codebooks
-    output_dir = args.root
+    output_dir = os.path.join(args.root, "rqkmeans_constrained")    # Debug(zc): use method-specific subdir to distinguish outputs from different approaches
     os.makedirs(output_dir, exist_ok=True)
 
     t2 = time.time()
     codebook_path = os.path.join(output_dir, f'{args.dataset}.codebooks_constrained.npz')
     np.savez_compressed(codebook_path,
                        **{f'codebook_{i}': cb for i, cb in enumerate(codebooks)})
+    # Note(zc): Saved as a single .npz (zip container) containing multiple arrays:
+    # {dataset}.codebooks_constrained.npz
+    # ├── codebook_0.npy  shape=(256, 2560)
+    # ├── codebook_1.npy  shape=(256, 2560)
+    # └── codebook_2.npy  shape=(256, 2560)
     print(f"\n[Time] Saved codebooks: {time.time()-t2:.2f}s")
     print(f"Codebooks saved to: {codebook_path}")
 
     # Prepare codes (+1 offset for token format)
-    codes_plus_one = codes_all.T + 1
+    codes_plus_one = codes_all.T + 1    # Note(zc): shape of codes_all.T: (n, l)
     codes_df = pl.DataFrame({'codes': [list(c) for c in codes_plus_one]})
 
     # Deduplication
@@ -250,7 +253,7 @@ if __name__ == "__main__":
         codes_ = []
         for i, code in enumerate(row['codes']):
             codes_.append(f'<{chr(97+i)}_{code}>')
-        codes_json[str(id)] = codes_
+        codes_json[str(id)] = codes_    # Note(zc): codes_json = {"0": ["<a_60>", "<b_159>", "<c_203>"], "1": [...], ... }
 
     # Save JSON index
     json_path = os.path.join(output_dir, f'{args.dataset}.index.json')
