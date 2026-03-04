@@ -561,9 +561,9 @@ if __name__ == '__main__':
     # Write output files (amazon18 style)
     write_json_file(item2feature, os.path.join(args.output_path, args.dataset, f'{args.dataset}.item.json'))
     # Note(zc): review.json is not consumed by any downstream module
-    write_json_file(review_data, os.path.join(args.output_path, args.dataset, f'{args.dataset}.review.json'))
+    # write_json_file(review_data, os.path.join(args.output_path, args.dataset, f'{args.dataset}.review.json'))
     # Note(zc): user2id and item2id are not consumed by any downstream module
-    write_remap_index(user2index, os.path.join(args.output_path, args.dataset, f'{args.dataset}.user2id'))
-    write_remap_index(item2index, os.path.join(args.output_path, args.dataset, f'{args.dataset}.item2id'))
+    # write_remap_index(user2index, os.path.join(args.output_path, args.dataset, f'{args.dataset}.user2id'))
+    # write_remap_index(item2index, os.path.join(args.output_path, args.dataset, f'{args.dataset}.item2id'))
     
     print("Processing completed!")
