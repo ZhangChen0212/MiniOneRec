@@ -64,11 +64,11 @@ def load_metadata_json2csv_style(category, metadata_file=None):
     """Load metadata using json2csv style processing"""
     if metadata_file is None:
         metadata_file = f'../meta_{category}.json'
-    
-    metadata = []
+
     try:
         with open(metadata_file) as f:
             metadata = [json.loads(line) for line in f]
+            # Note(zc): metadata = [{"asin": "0000031852", "title": "Girls Ballet Tutu Zebra Hot Pink", ...}, ...]
     except FileNotFoundError:
         print(f"Metadata file {metadata_file} not found")
         return [], {}, set()
@@ -115,6 +115,7 @@ def load_reviews_json2csv_style(category, reviews_file=None, start_timestamp=Non
             return []
     
     # NOTE: Don't filter by timestamp here, do it in k-core filtering like json2csv
+    # Note(zc): reviews = [{"reviewerID": "A2SUAM1J3GNN3B", "asin": "0000013714", ...}, ...]
     return reviews
 
 
@@ -201,16 +202,16 @@ def convert_inters2dict_amazon18_style(reviews):
         for review in user_reviews[user]:
             item = review['asin']
             if item not in item2index:
-                item2index[item] = len(item2index)
+                item2index[item] = len(item2index)  # Note(zc): asin -> item_idx
             
             user_items.append(item)
             interactions.append((
                 user, item, 
                 float(review['overall']), 
-                int(review['unixReviewTime'])
-            ))
+                int(review['unixReviewTime'])   # Note(zc): time of the review
+            ))  # Note(zc): review -> interaction
         
-        user2items[user2index[user]] = [item2index[item] for item in user_items]
+        user2items[user2index[user]] = [item2index[item] for item in user_items]   # Note(zc): user_idx -> [item1_idx, ...]
     
     return user2items, user2index, item2index, interactions
 
@@ -307,10 +308,9 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
             user_id = user2index[user_id_original]  
             history_item_ids = [str(x) for x in interaction[3]]  # history item ids
             target_item_id = str(interaction[4])  # target item id
-            
-            # Limit history to last 50 items like amazon18
-            history_seq = history_item_ids[-50:]
-            file.write(f'{user_id}\t{" ".join(history_seq)}\t{target_item_id}\n')
+
+            # Debug(zc): history length is already truncated to <=10 upstream, no extra trimming is needed here
+            file.write(f'{user_id}\t{" ".join(history_item_ids)}\t{target_item_id}\n')
     
     # Write valid file  
     with open(os.path.join(args.output_path, args.dataset, f'{args.dataset}.valid.inter'), 'w') as file:
@@ -320,10 +320,9 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
             user_id = user2index[user_id_original]  
             history_item_ids = [str(x) for x in interaction[3]]  # history item ids
             target_item_id = str(interaction[4])  # target item id
-            
-            # Limit history to last 50 items like amazon18
-            history_seq = history_item_ids[-50:]
-            file.write(f'{user_id}\t{" ".join(history_seq)}\t{target_item_id}\n')
+
+            # Debug(zc): history length is already truncated to <=10 upstream, no extra trimming is needed here
+            file.write(f'{user_id}\t{" ".join(history_item_ids)}\t{target_item_id}\n')
     
     # Write test file
     with open(os.path.join(args.output_path, args.dataset, f'{args.dataset}.test.inter'), 'w') as file:
@@ -333,10 +332,9 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
             user_id = user2index[user_id_original] 
             history_item_ids = [str(x) for x in interaction[3]]  # history item ids  
             target_item_id = str(interaction[4])  # target item id
-            
-            # Limit history to last 50 items like amazon18
-            history_seq = history_item_ids[-50:]
-            file.write(f'{user_id}\t{" ".join(history_seq)}\t{target_item_id}\n')
+
+            # Debug(zc): history length is already truncated to <=10 upstream, no extra trimming is needed here
+            file.write(f'{user_id}\t{" ".join(history_item_ids)}\t{target_item_id}\n')
     
     return train_interactions, valid_interactions, test_interactions
 
@@ -537,14 +535,11 @@ if __name__ == '__main__':
     train_interactions, valid_interactions, test_interactions = convert_to_atomic_files_json2csv_style(
         args, interaction_list, user2index
     )
-    
-    # Generate user2items for compatibility with amazon18 format
-    user2items_final = collections.defaultdict(list)
-    for user_idx, item_list in user2items.items():
-        user2items_final[user_idx] = item_list
+
+    # Debug(zc): removed redundant variable copy, user2items already matches the required format
     
     # Write interaction files (amazon18 style output)
-    write_json_file(user2items_final, os.path.join(args.output_path, args.dataset, f'{args.dataset}.inter.json'))
+    write_json_file(user2items, os.path.join(args.output_path, args.dataset, f'{args.dataset}.inter.json'))
     
     # Create item features
     print("Creating item features...")
@@ -552,7 +547,7 @@ if __name__ == '__main__':
     
     # Load review data
     print("Loading review data...")
-    review_data = load_review_data_amazon18_style(filtered_reviews, user2index, item2index)
+    review_data = load_review_data_amazon18_style(filtered_reviews, user2index, item2index)  # Note(zc): user_id, item_id, time_stamp -> review, summary
     
     print(f"Final statistics:")
     print(f"Users: {len(user2index)}")
@@ -565,8 +560,9 @@ if __name__ == '__main__':
     
     # Write output files (amazon18 style)
     write_json_file(item2feature, os.path.join(args.output_path, args.dataset, f'{args.dataset}.item.json'))
+    # Note(zc): review.json is not consumed by any downstream module
     write_json_file(review_data, os.path.join(args.output_path, args.dataset, f'{args.dataset}.review.json'))
-    
+    # Note(zc): user2id and item2id are not consumed by any downstream module
     write_remap_index(user2index, os.path.join(args.output_path, args.dataset, f'{args.dataset}.user2id'))
     write_remap_index(item2index, os.path.join(args.output_path, args.dataset, f'{args.dataset}.item2id'))
     
