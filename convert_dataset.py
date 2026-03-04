@@ -10,6 +10,7 @@ import os
 from typing import Dict, List, Any
 import argparse
 
+
 def load_dataset(data_dir: str, dataset_name: str) -> Dict[str, Any]:
     """Load all dataset files"""
     data = {}
@@ -17,10 +18,19 @@ def load_dataset(data_dir: str, dataset_name: str) -> Dict[str, Any]:
     # Load item metadata (id -> {title, description, ...})
     with open(os.path.join(data_dir, f'{dataset_name}.item.json'), 'r') as f:
         data['items'] = json.load(f)
+    # Note(zc): data['items'] = {
+    #   "0": {
+    #     "title": "SUPCO SPP6 Relay/Capacitor Hard Start Kit with 500% Increase Starting Torque",
+    #     "description": "['Relay/CAPACITOR hard start kit 500% incr starting torque,increased compressor starting torque. Designed for use on permanent split CAPACITOR single phase a/c and heat pump systems. Multiple use includes: room air conditioner units, residential or commercial psc AC units.. the country of origin is china.']",
+    #     "brand": "Sealed Unit Parts Co., Inc.",
+    #     "categories": ""
+    #   },
+    #   ...}
     
     # Load item_id to semantic tokens mapping from index.json
     with open(os.path.join(data_dir, f'{dataset_name}.index.json'), 'r') as f:
         data['item_to_semantic'] = json.load(f)
+    # Note(zc): data['item_to_semantic'] = {"0": ["<a_60>", "<b_159>", "<c_203>"], "1": ["<a_204>", "<b_229>", "<c_36>"], ...}
     
     # Load train/valid/test splits
     splits = {}
@@ -32,12 +42,19 @@ def load_dataset(data_dir: str, dataset_name: str) -> Dict[str, Any]:
                 splits[split] = [line.strip().split('\t') for line in lines if line.strip()]
     
     data['splits'] = splits
+    # Note(zc): data['splits'] = {
+    #   'train': [row1, row2, ...],
+    #   'valid': [...],
+    #   'test' : [...],
+    # }
     return data
+
 
 def semantic_tokens_to_id(tokens: List[str]) -> str:
     """Convert semantic tokens list to concatenated string with brackets preserved"""
     # Keep brackets and concatenate directly (no spaces)
     return ''.join(tokens)
+
 
 def create_item_info_file(items: Dict[str, Dict], item_to_semantic: Dict[str, List], output_path: str):
     """Create item info file (sid -> title -> item_id mapping)"""
@@ -50,6 +67,7 @@ def create_item_info_file(items: Dict[str, Dict], item_to_semantic: Dict[str, Li
                 # Get item title, fallback to Item_id if not available
                 item_title = item_data.get('title', f'Item_{item_id}')
                 f.write(f"{semantic_id}\t{item_title}\t{item_id}\n")
+
 
 def convert_interactions_to_csv(splits: Dict[str, List], items: Dict[str, Dict], 
                                item_to_semantic: Dict[str, List], output_dir: str, category: str = "Office_Products",
@@ -158,6 +176,7 @@ def convert_interactions_to_csv(splits: Dict[str, List], items: Dict[str, Dict],
                 print(f"    item_sid: {rows[0]['item_sid']}")
                 print(f"    item_title: {rows[0]['item_title'][:50]}...")
 
+
 def main():
     parser = argparse.ArgumentParser(description='Convert dataset (Office_Products/Industrial_and_Scientific) to MiniOneRec format with semantic IDs')
     parser.add_argument('--data_dir', type=str, 
@@ -228,6 +247,7 @@ def main():
         print(f"Validation set was limited to {args.max_valid_samples} samples")
     if args.max_test_samples is not None:
         print(f"Test set was limited to {args.max_test_samples} samples")
+
 
 if __name__ == '__main__':
     main()
