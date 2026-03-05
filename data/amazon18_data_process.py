@@ -63,7 +63,7 @@ def get_timestamp_start(year, month):
 def load_metadata_json2csv_style(category, metadata_file=None):
     """Load metadata using json2csv style processing"""
     if metadata_file is None:
-        metadata_file = f'../meta_{category}.json'
+        metadata_file = f'Amazon/meta_{category}.json'
 
     try:
         with open(metadata_file) as f:
@@ -97,11 +97,11 @@ def load_reviews_json2csv_style(category, reviews_file=None, start_timestamp=Non
     """Load reviews using json2csv style processing"""
     if reviews_file is None:
         try:
-            with open(f'../{category}_5.json') as f:
+            with open(f'Amazon/{category}_5.json') as f:
                 reviews = [json.loads(line) for line in f]
         except FileNotFoundError:
             try:
-                with open(f'../{category}.json') as f:
+                with open(f'Amazon/{category}.json') as f:
                     reviews = [json.loads(line) for line in f]
             except FileNotFoundError:
                 print(f"Reviews file not found for category {category}")
@@ -284,9 +284,6 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
     print('Convert dataset: ')
     print(' Dataset: ', args.dataset)
     
-    # Create output directories
-    check_path(os.path.join(args.output_path, args.dataset))
-    
     # Split 8:1:1 like json2csv
     total_len = len(interaction_list)
     train_end = int(total_len * 0.8)
@@ -301,7 +298,7 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
     print(f"Test interactions: {len(test_interactions)}")
     
     # Write train file
-    with open(os.path.join(args.output_path, args.dataset, f'{args.dataset}.train.inter'), 'w') as file:
+    with open(os.path.join(args.output_path, f'{args.dataset}.train.inter'), 'w') as file:
         file.write('user_id:token\titem_id_list:token_seq\titem_id:token\n')
         for interaction in train_interactions:
             user_id_original = interaction[0]
@@ -313,7 +310,7 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
             file.write(f'{user_id}\t{" ".join(history_item_ids)}\t{target_item_id}\n')
     
     # Write valid file  
-    with open(os.path.join(args.output_path, args.dataset, f'{args.dataset}.valid.inter'), 'w') as file:
+    with open(os.path.join(args.output_path, f'{args.dataset}.valid.inter'), 'w') as file:
         file.write('user_id:token\titem_id_list:token_seq\titem_id:token\n')
         for interaction in valid_interactions:
             user_id_original = interaction[0]
@@ -325,7 +322,7 @@ def convert_to_atomic_files_json2csv_style(args, interaction_list, user2index):
             file.write(f'{user_id}\t{" ".join(history_item_ids)}\t{target_item_id}\n')
     
     # Write test file
-    with open(os.path.join(args.output_path, args.dataset, f'{args.dataset}.test.inter'), 'w') as file:
+    with open(os.path.join(args.output_path, f'{args.dataset}.test.inter'), 'w') as file:
         file.write('user_id:token\titem_id_list:token_seq\titem_id:token\n')
         for interaction in test_interactions:
             user_id_original = interaction[0]
@@ -539,7 +536,7 @@ if __name__ == '__main__':
     # Debug(zc): removed redundant variable copy, user2items already matches the required format
     
     # Write interaction files (amazon18 style output)
-    write_json_file(user2items, os.path.join(args.output_path, args.dataset, f'{args.dataset}.inter.json'))
+    write_json_file(user2items, os.path.join(args.output_path, f'{args.dataset}.inter.json'))
     
     # Create item features
     print("Creating item features...")
@@ -559,7 +556,7 @@ if __name__ == '__main__':
     print(f"Test sequences: {len(test_interactions)}")
     
     # Write output files (amazon18 style)
-    write_json_file(item2feature, os.path.join(args.output_path, args.dataset, f'{args.dataset}.item.json'))
+    write_json_file(item2feature, os.path.join(args.output_path, f'{args.dataset}.item.json'))
     # Note(zc): review.json is not consumed by any downstream module
     # write_json_file(review_data, os.path.join(args.output_path, args.dataset, f'{args.dataset}.review.json'))
     # Note(zc): user2id and item2id are not consumed by any downstream module
