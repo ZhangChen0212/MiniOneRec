@@ -1,4 +1,8 @@
 export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
+export WANDB_DISABLED=1
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_HOME=/root/autodl-tmp/hf
+export TRANSFORMERS_CACHE=/root/autodl-tmp/hf/transformers
 # Office_Products, Industrial_and_Scientific
 for category in "Industrial_and_Scientific"; do
     train_file=$(ls -f ./data/Amazon/train/${category}*11.csv)
@@ -7,20 +11,21 @@ for category in "Industrial_and_Scientific"; do
     info_file=$(ls -f ./data/Amazon/info/${category}*.txt)
     echo ${train_file} ${eval_file} ${info_file} ${test_file}
     
-    torchrun --nproc_per_node 8 \
+    # 4090记得换成1proc_per_node，batch_size=64，micro_batch_size=1
+    torchrun --nproc_per_node 4 \
             sft.py \
-            --base_model your_model_path \
+            --base_model Qwen/Qwen2.5-1.5B \
             --batch_size 1024 \
             --micro_batch_size 16 \
             --train_file ${train_file} \
             --eval_file ${eval_file} \
-            --output_dir output_dir/xxx \
-            --wandb_project wandb_proj \
-            --wandb_run_name wandb_name \
+            --output_dir /root/autodl-tmp/runs/Qwen2.5-1.5B \
             --category ${category} \
             --train_from_scratch False \
             --seed 42 \
-            --sid_index_path ./data/Amazon/index/Industrial_and_Scientific.index.json \
-            --item_meta_path ./data/Amazon/index//Industrial_and_Scientific.item.json \
+            --sid_index_path ./data/Amazon/Industrial_and_Scientific.index.json \
+            --item_meta_path ./data/Amazon/Industrial_and_Scientific.item.json \
             --freeze_LLM False
+	    # --wandb_project wandb_proj \
+            # --wandb_run_name wandb_name \
 done

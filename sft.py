@@ -272,7 +272,7 @@ def train(
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     trainer.save_model(output_dir)
 
-    output_dir = os.path.join(output_dir, "final_checkpoint")
+    output_dir = os.path.join(output_dir, "sft_checkpoint")
     trainer.model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
 
