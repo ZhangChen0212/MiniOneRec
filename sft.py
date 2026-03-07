@@ -136,7 +136,7 @@ def train(
     ddp = world_size != 1
     if ddp:
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
-        # Note(zc): gradient_accumulation_steps: num of accumulated forward / backward per GPU; world_size = num_GPUs #
+        # Note(zc): gradient_accumulation_steps: num of accumulated forward / backward per GPU; world_size = num_GPUs
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
 
     if not train_from_scratch:
