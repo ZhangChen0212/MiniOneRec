@@ -1,4 +1,4 @@
-
+import numpy as np
 import pandas as pd
 import fire
 import torch
@@ -12,18 +12,18 @@ import random
 import bitsandbytes as bnb
 
 
-
 if torch.cuda.is_available():
     device = "cuda"
 else:
     device = "cpu"
 P = 998244353
 MOD = int(1e9 + 9)
-import numpy as np
+
 
 def get_hash(x):
     x = [str(_) for _ in x]
-    return '-'.join(x)
+    return '-'.join(x)  # Note(zc): get_hash([151, 23, 890]) = "151-23-890"
+
 
 def set_seed(seed):
     random.seed(seed)
@@ -34,7 +34,8 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
-    
+
+
 def main(
     base_model: str = "",
     train_file: str = "",
@@ -57,7 +58,7 @@ def main(
     print(category)
 
     model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.bfloat16, device_map="auto")
-    model.eval()
+    model.eval()    # Note(zc): switch the model to evaluation mode
     with open(info_file, 'r') as f:
         info = f.readlines()
         # Parse new format: semantic_id \t item_title \t item_id
@@ -68,7 +69,6 @@ def main(
         info_semantic = [f'''### Response:\n{_}''' for _ in semantic_ids]
         info_titles = [f'''### Response:\n{_}''' for _ in item_titles]
 
-
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     
     # Create prefixID for semantic IDs (existing functionality)
@@ -76,18 +76,18 @@ def main(
         prefixID = [tokenizer(_).input_ids[1:] for _ in info_semantic]
         prefixTitleID = [tokenizer(_).input_ids[1:] for _ in info_titles]
     else:
-        prefixID = [tokenizer(_).input_ids for _ in info_semantic]
+        prefixID = [tokenizer(_).input_ids for _ in info_semantic]  # Note(zc): [[101, 201, 301], [101, 202, 302], ...]
         prefixTitleID = [tokenizer(_).input_ids for _ in info_titles]
     if base_model.lower().find("gpt2") > -1:
         prefix_index = 4
     else:
-        prefix_index = 3
+        prefix_index = 3    # Note(zc): skip "### Response:"
     
     # Build hash_dict for semantic IDs (existing functionality)
     hash_dict = dict()
     # print(f"eos token: {tokenizer.eos_token_id}")
     for index, ID in enumerate(prefixID):
-        ID.append(tokenizer.eos_token_id)
+        ID.append(tokenizer.eos_token_id)   # Note(zc): [P1, P2, P3, A, B, EOS]
         for i in range(prefix_index, len(ID)):
             if i == prefix_index:
                 hash_number = get_hash(ID[:i])
@@ -95,7 +95,7 @@ def main(
                 hash_number = get_hash(ID[prefix_index:i])
             if hash_number not in hash_dict:
                 hash_dict[hash_number] = set()
-            hash_dict[hash_number].add(ID[i])
+            hash_dict[hash_number].add(ID[i])   # Note(zc): hash_dict["P1-P2-P3"].add(A)
         hash_number = get_hash(ID[prefix_index:])
 
     # Build hash_dict_title for item titles (new functionality)
@@ -122,7 +122,7 @@ def main(
     def prefix_allowed_tokens_fn_semantic(batch_id, input_ids):
         hash_number = get_hash(input_ids)
         if hash_number in hash_dict:
-            return hash_dict[hash_number]
+            return hash_dict[hash_number]   # Note(zc): return all candidates
         return []
         
     def prefix_allowed_tokens_fn_title(batch_id, input_ids):
@@ -156,15 +156,16 @@ def main(
             length_penalty=1.0,
             **kwargs,
     ):
+
         maxLen = max([len(_["input_ids"]) for _ in encodings])
 
         padding_encodings = {"input_ids": []}
         attention_mask = []
 
-        for  _ in encodings:
+        for _ in encodings:
             L = len(_["input_ids"])
             padding_encodings["input_ids"].append([tokenizer.pad_token_id] * (maxLen - L) + _["input_ids"])
-            attention_mask.append([0] * (maxLen - L) + [1] * L) 
+            attention_mask.append([0] * (maxLen - L) + [1] * L)     # Note(zc): left padding
         
         # print(f"num_beams: {num_beams}")
         generation_config = GenerationConfig(
@@ -195,18 +196,17 @@ def main(
                 return_dict_in_generate=True,
                 output_scores=True,
                 logits_processor=logits_processor,
-            )
+            )   # Note(zc): generated completions for all beams, shape: (batch_size * num_beams, max_len + generated_len)
        
         batched_completions = generation_output.sequences[:, maxLen:]
-       
-        
+
         if base_model.lower().find("llama") > -1:
             output = tokenizer.batch_decode(batched_completions, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         else:
             output = tokenizer.batch_decode(batched_completions, skip_special_tokens=True)
             
         output = [_.split("Response:\n")[-1].strip() for _ in output]
-        real_outputs = [output[i * num_beams: (i + 1) * num_beams] for i in range(len(output) // num_beams)]
+        real_outputs = [output[i * num_beams: (i + 1) * num_beams] for i in range(len(output) // num_beams)]    # Note(zc): regroup flattened outputs by sample: [[beam1, ..., beamK], ...]
         return real_outputs
     
     model = model.to(device)
@@ -217,8 +217,7 @@ def main(
     BLOCK = (len(encodings) + batch_size - 1) // batch_size
     for i in range(BLOCK):
         new_encodings.append(encodings[i * batch_size: (i + 1) * batch_size])
-
-    
+    # Note(zc): iterate over batches, evaluate each batch, and append results to outputs
     for idx, encodings in enumerate(tqdm(new_encodings)):
         # Use standard evaluation
         output = evaluate(encodings, max_new_tokens=max_new_tokens, num_beams=num_beams, length_penalty=length_penalty)
@@ -227,13 +226,13 @@ def main(
        
     for i, test in enumerate(test_data):
         test["predict"] = outputs[i]
-  
 
     for i in range(len(test_data)):
         if 'dedup' in test_data[i]:
             test_data[i].pop('dedup')  
     with open(result_json_data, 'w') as f:
         json.dump(test_data, f, indent=4)
+
 
 if __name__ == '__main__':
     fire.Fire(main)
