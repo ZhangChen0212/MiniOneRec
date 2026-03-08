@@ -3,6 +3,9 @@ export WANDB_DISABLED=1
 export HF_ENDPOINT=https://hf-mirror.com
 export HF_HOME=/root/autodl-tmp/hf
 export TRANSFORMERS_CACHE=/root/autodl-tmp/hf/transformers
+
+timestamp=$(date +%m%d_%H%M)
+
 # Office_Products, Industrial_and_Scientific
 for category in "Industrial_and_Scientific"; do
     train_file=$(ls -f ./data/Amazon/train/${category}*11.csv)
@@ -19,7 +22,7 @@ for category in "Industrial_and_Scientific"; do
             --micro_batch_size 16 \
             --train_file ${train_file} \
             --eval_file ${eval_file} \
-            --output_dir /root/autodl-tmp/runs/Qwen2.5-1.5B \
+            --output_dir /root/autodl-tmp/runs/Qwen2.5-1.5B_${timestamp} \
             --category ${category} \
             --train_from_scratch False \
             --seed 42 \
