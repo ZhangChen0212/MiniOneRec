@@ -21,6 +21,7 @@ LOGITS_PROCESSOR_INPUTS_DOCSTRING = r"""
 
 """
 
+
 class ConstrainedLogitsProcessor(LogitsProcessor):
 
     def __init__(
@@ -40,20 +41,20 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
         else:
             self.prefix_index = 3
 
-    
     @add_start_docstrings(LOGITS_PROCESSOR_INPUTS_DOCSTRING)
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
         scores = torch.nn.functional.log_softmax(scores, dim=-1)
         mask = torch.full_like(scores, float('-inf'))
-            
-        for batch_id, beam_sent in enumerate(input_ids.view(-1, self._num_beams, input_ids.shape[-1])):
-            for beam_id, sent in enumerate(beam_sent):
-                if self.count == 0:
+
+        # Note(zc): reshape input_ids from (batch_size * num_beams, seq_len) to (batch_size, num_beams, seq_len)
+        for sample_id, beam_sent in enumerate(input_ids.view(-1, self._num_beams, input_ids.shape[-1])):
+            for beam_id, sent in enumerate(beam_sent):  # Note(zc): loop over all candidates
+                if self.count == 0:    # Note(zc): number of generated tokens
                     hash_key = sent[-self.prefix_index:]
                 else:
-                    hash_key=sent[-self.count:]
+                    hash_key = sent[-self.count:]   # Note(zc): get generated tokens
                 hash_key = hash_key.tolist()
-                prefix_allowed_tokens = self._prefix_allowed_tokens_fn(batch_id, hash_key)
+                prefix_allowed_tokens = self._prefix_allowed_tokens_fn(sample_id, hash_key)
 
                 if len(prefix_allowed_tokens) == 0:
                     warnings.warn(
@@ -62,10 +63,10 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
                     )
                     # Force EOS token to end invalid sequence
                     if self.eos_token_id is not None:
-                        mask[batch_id * self._num_beams + beam_id, self.eos_token_id] = 0
+                        mask[sample_id * self._num_beams + beam_id, self.eos_token_id] = 0
                     continue 
-                
-                mask[batch_id * self._num_beams + beam_id, prefix_allowed_tokens] = 0
+                # Note(zc): 0 means allowed; all other tokens stay masked as -inf by default
+                mask[sample_id * self._num_beams + beam_id, prefix_allowed_tokens] = 0
 
         self.count += 1
 
