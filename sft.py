@@ -218,6 +218,12 @@ def train(
                              category=category)
     # val_data = SFTData(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=20000, seed=seed, category=category)
     print("LOAD DATA FINISHED")
+    # Debug(zc): print dataset sizes for each task and the concatenated training set
+    print(f"SidSFTDataset: {len(train_data1)}")
+    print(f"SidItemFeatDataset: {len(train_data2)}")
+    print(f"FusionSeqRecDataset: {len(train_data3)}")
+    print(f"TitleHistory2SidSFTDataset: {len(train_data5)}")
+    print(f"ConcatDataset total: {len(train_data)}")
 
     if not ddp and torch.cuda.device_count() > 1:
         model.is_parallelizable = True
